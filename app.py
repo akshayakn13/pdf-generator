@@ -1,8 +1,9 @@
 from flask import Flask, request, jsonify
-from weasyprint import HTML
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
 import tempfile
-import os
 import base64
+import os
 
 app = Flask(__name__)
 
@@ -12,10 +13,14 @@ def generate_pdf():
     html_content = data.get("html", "")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as pdf_file:
-        HTML(string=html_content).write_pdf(pdf_file.name)
+        doc = SimpleDocTemplate(pdf_file.name)
+        styles = getSampleStyleSheet()
+
+        story = [Paragraph(html_content, styles["BodyText"])]
+        doc.build(story)
 
         with open(pdf_file.name, "rb") as f:
-            pdf_base64 = base64.b64encode(f.read()).decode("utf-8")
+            pdf_base64 = base64.b64encode(f.read()).decode()
 
     os.remove(pdf_file.name)
 
