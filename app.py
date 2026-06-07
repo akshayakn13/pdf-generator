@@ -6,11 +6,10 @@ from reportlab.platypus import (
     PageBreak
 )
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
 import tempfile
 import base64
 import os
-import re
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
@@ -24,61 +23,49 @@ def home():
 def generate_pdf():
     try:
         data = request.get_json()
-
         html_content = data.get("html", "")
 
-        # Clean HTML tags
-        clean_text = re.sub(r"<[^>]+>", "", html_content)
-
-        # Decode HTML entities
-        clean_text = (
-            clean_text.replace("&nbsp;", " ")
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-        )
+        soup = BeautifulSoup(html_content, "html.parser")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as pdf_file:
 
             doc = SimpleDocTemplate(pdf_file.name)
-
             styles = getSampleStyleSheet()
 
             story = []
 
-            story.append(
-                Paragraph(
-                    "Social Media Content Calendar",
-                    styles["Title"]
+            title = soup.find(class_="title")
+
+            if title:
+                story.append(
+                    Paragraph(title.get_text(strip=True), styles["Title"])
                 )
-            )
+                story.append(Spacer(1, 20))
 
-            story.append(Spacer(1, 12))
+            days = soup.find_all(class_="day")
 
-            # Split into sections
-            sections = clean_text.split("Day ")
-
-            for section in sections:
-                section = section.strip()
-
-                if not section:
-                    continue
+            for i, day in enumerate(days):
 
                 story.append(
-                    Paragraph(
-                        f"Day {section[:1]}",
-                        styles["Heading2"]
-                    )
+                    Paragraph(day.get_text(strip=True), styles["Heading1"])
                 )
 
-                story.append(
-                    Paragraph(
-                        section,
-                        styles["BodyText"]
-                    )
-                )
+                current = day.find_next_sibling()
 
-                story.append(Spacer(1, 12))
+                while current and "day" not in current.get("class", []):
+
+                    text = current.get_text(" ", strip=True)
+
+                    if text:
+                        story.append(
+                            Paragraph(text, styles["BodyText"])
+                        )
+                        story.append(Spacer(1, 6))
+
+                    current = current.find_next_sibling()
+
+                if i < len(days) - 1:
+                    story.append(PageBreak())
 
             doc.build(story)
 
@@ -89,23 +76,16 @@ def generate_pdf():
 
         os.remove(pdf_file.name)
 
-        return jsonify(
-            {
-                "success": True,
-                "pdf_base64": pdf_base64
-            }
-        )
+        return jsonify({
+            "success": True,
+            "pdf_base64": pdf_base64
+        })
 
     except Exception as e:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": str(e)
-                }
-            ),
-            500,
-        )
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 if __name__ == "__main__":
